@@ -10,9 +10,11 @@ wmain(int argc, wchar_t **argv)
     return Py_Main(argc, argv);
 }
 #else
+void start_report();
 int
 main(int argc, char **argv)
 {
+    start_report();
     return Py_BytesMain(argc, argv);
 }
 #endif

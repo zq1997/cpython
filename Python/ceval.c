@@ -84,6 +84,8 @@ static int check_args_iterable(PyThreadState *, PyObject *func, PyObject *vararg
 static void format_kwargs_error(PyThreadState *, PyObject *func, PyObject *kwargs);
 static void format_awaitable_error(PyThreadState *, PyTypeObject *, int);
 
+void emit_report(int, int, int);
+
 #define NAME_ERROR_MSG \
     "name '%.200s' is not defined"
 #define UNBOUNDLOCAL_ERROR_MSG \
@@ -744,6 +746,10 @@ PyEval_EvalFrameEx(PyFrameObject *f, int throwflag)
 PyObject* _Py_HOT_FUNCTION
 _PyEval_EvalFrameDefault(PyFrameObject *f, int throwflag)
 {
+    static int frame_count = 0;
+    int this_frame = frame_count++;
+    emit_report(2, this_frame, 0);
+
 #ifdef DXPAIRS
     int lastopcode = 0;
 #endif
@@ -873,8 +879,8 @@ _PyEval_EvalFrameDefault(PyFrameObject *f, int throwflag)
 
 #else
 #define TARGET(op) op
-#define FAST_DISPATCH() goto fast_next_opcode
-#define DISPATCH() continue
+#define FAST_DISPATCH() {emit_report(-1, this_frame, opcode); goto fast_next_opcode;}
+#define DISPATCH() {emit_report(-1, this_frame, opcode); continue;}
 #endif
 
 
@@ -1319,6 +1325,7 @@ main_loop:
             }
         }
 #endif
+        emit_report(1, this_frame, opcode);
 
         switch (opcode) {
 
@@ -3813,6 +3820,9 @@ exit_eval_frame:
     Py_LeaveRecursiveCall();
     f->f_executing = 0;
     tstate->frame = f->f_back;
+
+    emit_report(-2, this_frame, 0);
+    frame_count--;
 
     return _Py_CheckFunctionResult(NULL, retval, "PyEval_EvalFrameEx");
 }
