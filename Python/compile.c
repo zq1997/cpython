@@ -922,6 +922,7 @@ stack_effect(int opcode, int oparg, int jump)
         case INPLACE_TRUE_DIVIDE:
             return -1;
 
+        case FAST_INPLACE_ADD:
         case INPLACE_ADD:
         case INPLACE_SUBTRACT:
         case INPLACE_MULTIPLY:
@@ -5046,6 +5047,16 @@ compiler_augassign(struct compiler *c, stmt_ty s)
         VISIT(c, expr, auge);
         break;
     case Name_kind:
+        {
+            PyObject *mangled = _Py_Mangle(c->u->u_private, e->v.Name.id);
+            if (mangled && PyST_GetScope(c->u->u_ste, mangled) == LOCAL &&
+                        c->u->u_ste->ste_type == FunctionBlock &&
+                        s->v.AugAssign.op == Add) {
+                    VISIT(c, expr, s->v.AugAssign.value);
+                    ADDOP_N(c, FAST_INPLACE_ADD, mangled, varnames);
+                    return 1;
+            }
+        }
         if (!compiler_nameop(c, e->v.Name.id, Load))
             return 0;
         VISIT(c, expr, s->v.AugAssign.value);

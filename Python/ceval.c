@@ -1765,6 +1765,32 @@ main_loop:
             DISPATCH();
         }
 
+        case TARGET(FAST_INPLACE_ADD): {
+            PyObject *left = GETLOCAL(oparg);
+            if (left == NULL) {
+                format_exc_check_arg(tstate, PyExc_UnboundLocalError,
+                                     UNBOUNDLOCAL_ERROR_MSG,
+                                     PyTuple_GetItem(co->co_varnames, oparg));
+                goto error;
+            }
+
+            PyObject *right = POP();
+            PyObject *sum;
+            if (PyUnicode_CheckExact(left) && PyUnicode_CheckExact(right)) {
+                Py_INCREF(left);
+                sum = unicode_concatenate(tstate, left, right, f, next_instr);
+            }
+            else {
+                sum = PyNumber_InPlaceAdd(left, right);
+            }
+            Py_DECREF(right);
+            if (sum == NULL)
+                goto error;
+
+            SETLOCAL(oparg, sum);
+            DISPATCH();
+        }
+
         case TARGET(INPLACE_SUBTRACT): {
             PyObject *right = POP();
             PyObject *left = TOP();

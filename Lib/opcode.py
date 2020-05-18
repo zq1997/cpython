@@ -90,6 +90,7 @@ def_op('BEFORE_ASYNC_WITH', 52)
 def_op('BEGIN_FINALLY', 53)
 def_op('END_ASYNC_FOR', 54)
 def_op('INPLACE_ADD', 55)
+def_op('FAST_INPLACE_ADD', 200)
 def_op('INPLACE_SUBTRACT', 56)
 def_op('INPLACE_MULTIPLY', 57)
 
