@@ -834,12 +834,27 @@ _PyEval_EvalFrameDefault(PyFrameObject *f, int throwflag)
 #endif
 
 #if USE_COMPUTED_GOTOS
+#define TARGET_BUILD_TUPLE_UNPACK TARGET_BUILD_TUPLE_UNPACK_WITH_CALL
+#define TARGET_BUILD_LIST_UNPACK TARGET_BUILD_TUPLE_UNPACK_WITH_CALL
 /* Import the static jump table */
 #include "opcode_targets.h"
 
-#define TARGET(op) \
-    op: \
-    TARGET_##op
+#if USE_ALIGNMENT
+#define STRINGIFY(x) #x
+#define COMBINE(x, y) x##y
+#define EXPAND(f, args...) f(args)
+#define ALIGNED_CASES(cases, label) \
+    EXPAND(COMBINE, l_, __LINE__): \
+        __asm__ (".p2align " EXPAND(STRINGIFY, USE_ALIGNMENT)); \
+    label: \
+        __asm__ goto (""::::EXPAND(COMBINE, l_, __LINE__)); \
+        __attribute__ ((fallthrough)); \
+    cases
+#else
+#define ALIGNED_CASES(cases, label) cases: label
+#endif
+
+#define TARGET(op) ALIGNED_CASES(case op, TARGET_##op)
 
 #ifdef LLTRACE
 #define FAST_DISPATCH() \
@@ -872,7 +887,8 @@ _PyEval_EvalFrameDefault(PyFrameObject *f, int throwflag)
     }
 
 #else
-#define TARGET(op) op
+#undef ALIGNED_CASES(cases, label) cases
+#define TARGET(op) case op
 #define FAST_DISPATCH() goto fast_next_opcode
 #define DISPATCH() continue
 #endif
@@ -1321,16 +1337,15 @@ main_loop:
 #endif
 
         switch (opcode) {
-
         /* BEWARE!
            It is essential that any operation that fails must goto error
            and that all operation that succeed call [FAST_]DISPATCH() ! */
 
-        case TARGET(NOP): {
+        TARGET(NOP): {
             FAST_DISPATCH();
         }
 
-        case TARGET(LOAD_FAST): {
+        TARGET(LOAD_FAST): {
             PyObject *value = GETLOCAL(oparg);
             if (value == NULL) {
                 format_exc_check_arg(tstate, PyExc_UnboundLocalError,
@@ -1343,7 +1358,7 @@ main_loop:
             FAST_DISPATCH();
         }
 
-        case TARGET(LOAD_CONST): {
+        TARGET(LOAD_CONST): {
             PREDICTED(LOAD_CONST);
             PyObject *value = GETITEM(consts, oparg);
             Py_INCREF(value);
@@ -1351,20 +1366,20 @@ main_loop:
             FAST_DISPATCH();
         }
 
-        case TARGET(STORE_FAST): {
+        TARGET(STORE_FAST): {
             PREDICTED(STORE_FAST);
             PyObject *value = POP();
             SETLOCAL(oparg, value);
             FAST_DISPATCH();
         }
 
-        case TARGET(POP_TOP): {
+        TARGET(POP_TOP): {
             PyObject *value = POP();
             Py_DECREF(value);
             FAST_DISPATCH();
         }
 
-        case TARGET(ROT_TWO): {
+        TARGET(ROT_TWO): {
             PyObject *top = TOP();
             PyObject *second = SECOND();
             SET_TOP(second);
@@ -1372,7 +1387,7 @@ main_loop:
             FAST_DISPATCH();
         }
 
-        case TARGET(ROT_THREE): {
+        TARGET(ROT_THREE): {
             PyObject *top = TOP();
             PyObject *second = SECOND();
             PyObject *third = THIRD();
@@ -1382,7 +1397,7 @@ main_loop:
             FAST_DISPATCH();
         }
 
-        case TARGET(ROT_FOUR): {
+        TARGET(ROT_FOUR): {
             PyObject *top = TOP();
             PyObject *second = SECOND();
             PyObject *third = THIRD();
@@ -1394,14 +1409,14 @@ main_loop:
             FAST_DISPATCH();
         }
 
-        case TARGET(DUP_TOP): {
+        TARGET(DUP_TOP): {
             PyObject *top = TOP();
             Py_INCREF(top);
             PUSH(top);
             FAST_DISPATCH();
         }
 
-        case TARGET(DUP_TOP_TWO): {
+        TARGET(DUP_TOP_TWO): {
             PyObject *top = TOP();
             PyObject *second = SECOND();
             Py_INCREF(top);
@@ -1412,7 +1427,7 @@ main_loop:
             FAST_DISPATCH();
         }
 
-        case TARGET(UNARY_POSITIVE): {
+        TARGET(UNARY_POSITIVE): {
             PyObject *value = TOP();
             PyObject *res = PyNumber_Positive(value);
             Py_DECREF(value);
@@ -1422,7 +1437,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(UNARY_NEGATIVE): {
+        TARGET(UNARY_NEGATIVE): {
             PyObject *value = TOP();
             PyObject *res = PyNumber_Negative(value);
             Py_DECREF(value);
@@ -1432,7 +1447,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(UNARY_NOT): {
+        TARGET(UNARY_NOT): {
             PyObject *value = TOP();
             int err = PyObject_IsTrue(value);
             Py_DECREF(value);
@@ -1450,7 +1465,7 @@ main_loop:
             goto error;
         }
 
-        case TARGET(UNARY_INVERT): {
+        TARGET(UNARY_INVERT): {
             PyObject *value = TOP();
             PyObject *res = PyNumber_Invert(value);
             Py_DECREF(value);
@@ -1460,7 +1475,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BINARY_POWER): {
+        TARGET(BINARY_POWER): {
             PyObject *exp = POP();
             PyObject *base = TOP();
             PyObject *res = PyNumber_Power(base, exp, Py_None);
@@ -1472,7 +1487,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BINARY_MULTIPLY): {
+        TARGET(BINARY_MULTIPLY): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *res = PyNumber_Multiply(left, right);
@@ -1484,7 +1499,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BINARY_MATRIX_MULTIPLY): {
+        TARGET(BINARY_MATRIX_MULTIPLY): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *res = PyNumber_MatrixMultiply(left, right);
@@ -1496,7 +1511,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BINARY_TRUE_DIVIDE): {
+        TARGET(BINARY_TRUE_DIVIDE): {
             PyObject *divisor = POP();
             PyObject *dividend = TOP();
             PyObject *quotient = PyNumber_TrueDivide(dividend, divisor);
@@ -1508,7 +1523,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BINARY_FLOOR_DIVIDE): {
+        TARGET(BINARY_FLOOR_DIVIDE): {
             PyObject *divisor = POP();
             PyObject *dividend = TOP();
             PyObject *quotient = PyNumber_FloorDivide(dividend, divisor);
@@ -1520,7 +1535,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BINARY_MODULO): {
+        TARGET(BINARY_MODULO): {
             PyObject *divisor = POP();
             PyObject *dividend = TOP();
             PyObject *res;
@@ -1540,7 +1555,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BINARY_ADD): {
+        TARGET(BINARY_ADD): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *sum;
@@ -1566,7 +1581,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BINARY_SUBTRACT): {
+        TARGET(BINARY_SUBTRACT): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *diff = PyNumber_Subtract(left, right);
@@ -1578,7 +1593,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BINARY_SUBSCR): {
+        TARGET(BINARY_SUBSCR): {
             PyObject *sub = POP();
             PyObject *container = TOP();
             PyObject *res = PyObject_GetItem(container, sub);
@@ -1590,7 +1605,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BINARY_LSHIFT): {
+        TARGET(BINARY_LSHIFT): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *res = PyNumber_Lshift(left, right);
@@ -1602,7 +1617,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BINARY_RSHIFT): {
+        TARGET(BINARY_RSHIFT): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *res = PyNumber_Rshift(left, right);
@@ -1614,7 +1629,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BINARY_AND): {
+        TARGET(BINARY_AND): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *res = PyNumber_And(left, right);
@@ -1626,7 +1641,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BINARY_XOR): {
+        TARGET(BINARY_XOR): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *res = PyNumber_Xor(left, right);
@@ -1638,7 +1653,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BINARY_OR): {
+        TARGET(BINARY_OR): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *res = PyNumber_Or(left, right);
@@ -1650,7 +1665,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(LIST_APPEND): {
+        TARGET(LIST_APPEND): {
             PyObject *v = POP();
             PyObject *list = PEEK(oparg);
             int err;
@@ -1662,7 +1677,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(SET_ADD): {
+        TARGET(SET_ADD): {
             PyObject *v = POP();
             PyObject *set = PEEK(oparg);
             int err;
@@ -1674,7 +1689,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(INPLACE_POWER): {
+        TARGET(INPLACE_POWER): {
             PyObject *exp = POP();
             PyObject *base = TOP();
             PyObject *res = PyNumber_InPlacePower(base, exp, Py_None);
@@ -1686,7 +1701,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(INPLACE_MULTIPLY): {
+        TARGET(INPLACE_MULTIPLY): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *res = PyNumber_InPlaceMultiply(left, right);
@@ -1698,7 +1713,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(INPLACE_MATRIX_MULTIPLY): {
+        TARGET(INPLACE_MATRIX_MULTIPLY): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *res = PyNumber_InPlaceMatrixMultiply(left, right);
@@ -1710,7 +1725,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(INPLACE_TRUE_DIVIDE): {
+        TARGET(INPLACE_TRUE_DIVIDE): {
             PyObject *divisor = POP();
             PyObject *dividend = TOP();
             PyObject *quotient = PyNumber_InPlaceTrueDivide(dividend, divisor);
@@ -1722,7 +1737,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(INPLACE_FLOOR_DIVIDE): {
+        TARGET(INPLACE_FLOOR_DIVIDE): {
             PyObject *divisor = POP();
             PyObject *dividend = TOP();
             PyObject *quotient = PyNumber_InPlaceFloorDivide(dividend, divisor);
@@ -1734,7 +1749,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(INPLACE_MODULO): {
+        TARGET(INPLACE_MODULO): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *mod = PyNumber_InPlaceRemainder(left, right);
@@ -1746,7 +1761,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(INPLACE_ADD): {
+        TARGET(INPLACE_ADD): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *sum;
@@ -1765,7 +1780,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(INPLACE_SUBTRACT): {
+        TARGET(INPLACE_SUBTRACT): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *diff = PyNumber_InPlaceSubtract(left, right);
@@ -1777,7 +1792,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(INPLACE_LSHIFT): {
+        TARGET(INPLACE_LSHIFT): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *res = PyNumber_InPlaceLshift(left, right);
@@ -1789,7 +1804,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(INPLACE_RSHIFT): {
+        TARGET(INPLACE_RSHIFT): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *res = PyNumber_InPlaceRshift(left, right);
@@ -1801,7 +1816,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(INPLACE_AND): {
+        TARGET(INPLACE_AND): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *res = PyNumber_InPlaceAnd(left, right);
@@ -1813,7 +1828,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(INPLACE_XOR): {
+        TARGET(INPLACE_XOR): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *res = PyNumber_InPlaceXor(left, right);
@@ -1825,7 +1840,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(INPLACE_OR): {
+        TARGET(INPLACE_OR): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *res = PyNumber_InPlaceOr(left, right);
@@ -1837,7 +1852,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(STORE_SUBSCR): {
+        TARGET(STORE_SUBSCR): {
             PyObject *sub = TOP();
             PyObject *container = SECOND();
             PyObject *v = THIRD();
@@ -1853,7 +1868,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(DELETE_SUBSCR): {
+        TARGET(DELETE_SUBSCR): {
             PyObject *sub = TOP();
             PyObject *container = SECOND();
             int err;
@@ -1867,7 +1882,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(PRINT_EXPR): {
+        TARGET(PRINT_EXPR): {
             _Py_IDENTIFIER(displayhook);
             PyObject *value = POP();
             PyObject *hook = _PySys_GetObjectId(&PyId_displayhook);
@@ -1886,7 +1901,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(RAISE_VARARGS): {
+        TARGET(RAISE_VARARGS): {
             PyObject *cause = NULL, *exc = NULL;
             switch (oparg) {
             case 2:
@@ -1908,13 +1923,13 @@ main_loop:
             goto error;
         }
 
-        case TARGET(RETURN_VALUE): {
+        TARGET(RETURN_VALUE): {
             retval = POP();
             assert(f->f_iblock == 0);
             goto exit_returning;
         }
 
-        case TARGET(GET_AITER): {
+        TARGET(GET_AITER): {
             unaryfunc getter = NULL;
             PyObject *iter = NULL;
             PyObject *obj = TOP();
@@ -1958,7 +1973,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(GET_ANEXT): {
+        TARGET(GET_ANEXT): {
             unaryfunc getter = NULL;
             PyObject *next_iter = NULL;
             PyObject *awaitable = NULL;
@@ -2009,7 +2024,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(GET_AWAITABLE): {
+        TARGET(GET_AWAITABLE): {
             PREDICTED(GET_AWAITABLE);
             PyObject *iterable = TOP();
             PyObject *iter = _PyCoro_GetAwaitableIter(iterable);
@@ -2045,7 +2060,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(YIELD_FROM): {
+        TARGET(YIELD_FROM): {
             PyObject *v = POP();
             PyObject *receiver = TOP();
             int err;
@@ -2079,7 +2094,7 @@ main_loop:
             goto exit_yielding;
         }
 
-        case TARGET(YIELD_VALUE): {
+        TARGET(YIELD_VALUE): {
             retval = POP();
 
             if (co->co_flags & CO_ASYNC_GENERATOR) {
@@ -2096,7 +2111,7 @@ main_loop:
             goto exit_yielding;
         }
 
-        case TARGET(POP_EXCEPT): {
+        TARGET(POP_EXCEPT): {
             PyObject *type, *value, *traceback;
             _PyErr_StackItem *exc_info;
             PyTryBlock *b = PyFrame_BlockPop(f);
@@ -2120,13 +2135,13 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(POP_BLOCK): {
+        TARGET(POP_BLOCK): {
             PREDICTED(POP_BLOCK);
             PyFrame_BlockPop(f);
             DISPATCH();
         }
 
-        case TARGET(POP_FINALLY): {
+        TARGET(POP_FINALLY): {
             /* If oparg is 0 at the top of the stack are 1 or 6 values:
                Either:
                 - TOP = NULL or an integer
@@ -2177,7 +2192,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(CALL_FINALLY): {
+        TARGET(CALL_FINALLY): {
             PyObject *ret = PyLong_FromLong(INSTR_OFFSET());
             if (ret == NULL) {
                 goto error;
@@ -2187,7 +2202,7 @@ main_loop:
             FAST_DISPATCH();
         }
 
-        case TARGET(BEGIN_FINALLY): {
+        TARGET(BEGIN_FINALLY): {
             /* Push NULL onto the stack for using it in END_FINALLY,
                POP_FINALLY, WITH_CLEANUP_START and WITH_CLEANUP_FINISH.
              */
@@ -2195,7 +2210,7 @@ main_loop:
             FAST_DISPATCH();
         }
 
-        case TARGET(END_FINALLY): {
+        TARGET(END_FINALLY): {
             PREDICTED(END_FINALLY);
             /* At the top of the stack are 1 or 6 values:
                Either:
@@ -2226,7 +2241,7 @@ main_loop:
             }
         }
 
-        case TARGET(END_ASYNC_FOR): {
+        TARGET(END_ASYNC_FOR): {
             PyObject *exc = POP();
             assert(PyExceptionClass_Check(exc));
             if (PyErr_GivenExceptionMatches(exc, PyExc_StopAsyncIteration)) {
@@ -2246,7 +2261,7 @@ main_loop:
             }
         }
 
-        case TARGET(LOAD_BUILD_CLASS): {
+        TARGET(LOAD_BUILD_CLASS): {
             _Py_IDENTIFIER(__build_class__);
 
             PyObject *bc;
@@ -2277,7 +2292,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(STORE_NAME): {
+        TARGET(STORE_NAME): {
             PyObject *name = GETITEM(names, oparg);
             PyObject *v = POP();
             PyObject *ns = f->f_locals;
@@ -2298,7 +2313,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(DELETE_NAME): {
+        TARGET(DELETE_NAME): {
             PyObject *name = GETITEM(names, oparg);
             PyObject *ns = f->f_locals;
             int err;
@@ -2317,7 +2332,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(UNPACK_SEQUENCE): {
+        TARGET(UNPACK_SEQUENCE): {
             PREDICTED(UNPACK_SEQUENCE);
             PyObject *seq = POP(), *item, **items;
             if (PyTuple_CheckExact(seq) &&
@@ -2348,7 +2363,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(UNPACK_EX): {
+        TARGET(UNPACK_EX): {
             int totalargs = 1 + (oparg & 0xFF) + (oparg >> 8);
             PyObject *seq = POP();
 
@@ -2363,7 +2378,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(STORE_ATTR): {
+        TARGET(STORE_ATTR): {
             PyObject *name = GETITEM(names, oparg);
             PyObject *owner = TOP();
             PyObject *v = SECOND();
@@ -2377,7 +2392,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(DELETE_ATTR): {
+        TARGET(DELETE_ATTR): {
             PyObject *name = GETITEM(names, oparg);
             PyObject *owner = POP();
             int err;
@@ -2388,7 +2403,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(STORE_GLOBAL): {
+        TARGET(STORE_GLOBAL): {
             PyObject *name = GETITEM(names, oparg);
             PyObject *v = POP();
             int err;
@@ -2399,7 +2414,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(DELETE_GLOBAL): {
+        TARGET(DELETE_GLOBAL): {
             PyObject *name = GETITEM(names, oparg);
             int err;
             err = PyDict_DelItem(f->f_globals, name);
@@ -2413,7 +2428,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(LOAD_NAME): {
+        TARGET(LOAD_NAME): {
             PyObject *name = GETITEM(names, oparg);
             PyObject *locals = f->f_locals;
             PyObject *v;
@@ -2477,7 +2492,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(LOAD_GLOBAL): {
+        TARGET(LOAD_GLOBAL): {
             PyObject *name;
             PyObject *v;
             if (PyDict_CheckExact(f->f_globals)
@@ -2563,7 +2578,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(DELETE_FAST): {
+        TARGET(DELETE_FAST): {
             PyObject *v = GETLOCAL(oparg);
             if (v != NULL) {
                 SETLOCAL(oparg, NULL);
@@ -2577,7 +2592,7 @@ main_loop:
             goto error;
         }
 
-        case TARGET(DELETE_DEREF): {
+        TARGET(DELETE_DEREF): {
             PyObject *cell = freevars[oparg];
             PyObject *oldobj = PyCell_GET(cell);
             if (oldobj != NULL) {
@@ -2589,14 +2604,14 @@ main_loop:
             goto error;
         }
 
-        case TARGET(LOAD_CLOSURE): {
+        TARGET(LOAD_CLOSURE): {
             PyObject *cell = freevars[oparg];
             Py_INCREF(cell);
             PUSH(cell);
             DISPATCH();
         }
 
-        case TARGET(LOAD_CLASSDEREF): {
+        TARGET(LOAD_CLASSDEREF): {
             PyObject *name, *value, *locals = f->f_locals;
             Py_ssize_t idx;
             assert(locals);
@@ -2635,7 +2650,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(LOAD_DEREF): {
+        TARGET(LOAD_DEREF): {
             PyObject *cell = freevars[oparg];
             PyObject *value = PyCell_GET(cell);
             if (value == NULL) {
@@ -2647,7 +2662,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(STORE_DEREF): {
+        TARGET(STORE_DEREF): {
             PyObject *v = POP();
             PyObject *cell = freevars[oparg];
             PyObject *oldobj = PyCell_GET(cell);
@@ -2656,7 +2671,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BUILD_STRING): {
+        TARGET(BUILD_STRING): {
             PyObject *str;
             PyObject *empty = PyUnicode_New(0, 0);
             if (empty == NULL) {
@@ -2674,7 +2689,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BUILD_TUPLE): {
+        TARGET(BUILD_TUPLE): {
             PyObject *tup = PyTuple_New(oparg);
             if (tup == NULL)
                 goto error;
@@ -2686,7 +2701,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BUILD_LIST): {
+        TARGET(BUILD_LIST): {
             PyObject *list =  PyList_New(oparg);
             if (list == NULL)
                 goto error;
@@ -2698,9 +2713,11 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BUILD_TUPLE_UNPACK_WITH_CALL):
-        case TARGET(BUILD_TUPLE_UNPACK):
-        case TARGET(BUILD_LIST_UNPACK): {
+        ALIGNED_CASES(
+                case BUILD_TUPLE_UNPACK_WITH_CALL:
+                case BUILD_TUPLE_UNPACK:
+                case BUILD_LIST_UNPACK,
+                TARGET_BUILD_TUPLE_UNPACK_WITH_CALL): {
             int convert_to_tuple = opcode != BUILD_LIST_UNPACK;
             Py_ssize_t i;
             PyObject *sum = PyList_New(0);
@@ -2741,7 +2758,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BUILD_SET): {
+        TARGET(BUILD_SET): {
             PyObject *set = PySet_New(NULL);
             int err = 0;
             int i;
@@ -2762,7 +2779,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BUILD_SET_UNPACK): {
+        TARGET(BUILD_SET_UNPACK): {
             Py_ssize_t i;
             PyObject *sum = PySet_New(NULL);
             if (sum == NULL)
@@ -2781,7 +2798,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BUILD_MAP): {
+        TARGET(BUILD_MAP): {
             Py_ssize_t i;
             PyObject *map = _PyDict_NewPresized((Py_ssize_t)oparg);
             if (map == NULL)
@@ -2805,7 +2822,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(SETUP_ANNOTATIONS): {
+        TARGET(SETUP_ANNOTATIONS): {
             _Py_IDENTIFIER(__annotations__);
             int err;
             PyObject *ann_dict;
@@ -2864,7 +2881,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BUILD_CONST_KEY_MAP): {
+        TARGET(BUILD_CONST_KEY_MAP): {
             Py_ssize_t i;
             PyObject *map;
             PyObject *keys = TOP();
@@ -2897,7 +2914,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BUILD_MAP_UNPACK): {
+        TARGET(BUILD_MAP_UNPACK): {
             Py_ssize_t i;
             PyObject *sum = PyDict_New();
             if (sum == NULL)
@@ -2922,7 +2939,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BUILD_MAP_UNPACK_WITH_CALL): {
+        TARGET(BUILD_MAP_UNPACK_WITH_CALL): {
             Py_ssize_t i;
             PyObject *sum = PyDict_New();
             if (sum == NULL)
@@ -2943,7 +2960,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(MAP_ADD): {
+        TARGET(MAP_ADD): {
             PyObject *value = TOP();
             PyObject *key = SECOND();
             PyObject *map;
@@ -2960,7 +2977,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(LOAD_ATTR): {
+        TARGET(LOAD_ATTR): {
             PyObject *name = GETITEM(names, oparg);
             PyObject *owner = TOP();
             PyObject *res = PyObject_GetAttr(owner, name);
@@ -2971,7 +2988,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(COMPARE_OP): {
+        TARGET(COMPARE_OP): {
             PyObject *right = POP();
             PyObject *left = TOP();
             PyObject *res = cmp_outcome(tstate, oparg, left, right);
@@ -2985,7 +3002,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(IMPORT_NAME): {
+        TARGET(IMPORT_NAME): {
             PyObject *name = GETITEM(names, oparg);
             PyObject *fromlist = POP();
             PyObject *level = TOP();
@@ -2999,7 +3016,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(IMPORT_STAR): {
+        TARGET(IMPORT_STAR): {
             PyObject *from = POP(), *locals;
             int err;
             if (PyFrame_FastToLocalsWithError(f) < 0) {
@@ -3022,7 +3039,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(IMPORT_FROM): {
+        TARGET(IMPORT_FROM): {
             PyObject *name = GETITEM(names, oparg);
             PyObject *from = TOP();
             PyObject *res;
@@ -3033,12 +3050,12 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(JUMP_FORWARD): {
+        TARGET(JUMP_FORWARD): {
             JUMPBY(oparg);
             FAST_DISPATCH();
         }
 
-        case TARGET(POP_JUMP_IF_FALSE): {
+        TARGET(POP_JUMP_IF_FALSE): {
             PREDICTED(POP_JUMP_IF_FALSE);
             PyObject *cond = POP();
             int err;
@@ -3062,7 +3079,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(POP_JUMP_IF_TRUE): {
+        TARGET(POP_JUMP_IF_TRUE): {
             PREDICTED(POP_JUMP_IF_TRUE);
             PyObject *cond = POP();
             int err;
@@ -3087,7 +3104,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(JUMP_IF_FALSE_OR_POP): {
+        TARGET(JUMP_IF_FALSE_OR_POP): {
             PyObject *cond = TOP();
             int err;
             if (cond == Py_True) {
@@ -3111,7 +3128,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(JUMP_IF_TRUE_OR_POP): {
+        TARGET(JUMP_IF_TRUE_OR_POP): {
             PyObject *cond = TOP();
             int err;
             if (cond == Py_False) {
@@ -3136,7 +3153,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(JUMP_ABSOLUTE): {
+        TARGET(JUMP_ABSOLUTE): {
             PREDICTED(JUMP_ABSOLUTE);
             JUMPTO(oparg);
 #if FAST_LOOPS
@@ -3153,7 +3170,7 @@ main_loop:
 #endif
         }
 
-        case TARGET(GET_ITER): {
+        TARGET(GET_ITER): {
             /* before: [obj]; after [getiter(obj)] */
             PyObject *iterable = TOP();
             PyObject *iter = PyObject_GetIter(iterable);
@@ -3166,7 +3183,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(GET_YIELD_FROM_ITER): {
+        TARGET(GET_YIELD_FROM_ITER): {
             /* before: [obj]; after [getiter(obj)] */
             PyObject *iterable = TOP();
             PyObject *iter;
@@ -3195,7 +3212,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(FOR_ITER): {
+        TARGET(FOR_ITER): {
             PREDICTED(FOR_ITER);
             /* before: [iter]; after: [iter, iter()] *or* [] */
             PyObject *iter = TOP();
@@ -3223,7 +3240,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(SETUP_FINALLY): {
+        TARGET(SETUP_FINALLY): {
             /* NOTE: If you add any new block-setup opcodes that
                are not try/except/finally handlers, you may need
                to update the PyGen_NeedsFinalizing() function.
@@ -3234,7 +3251,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BEFORE_ASYNC_WITH): {
+        TARGET(BEFORE_ASYNC_WITH): {
             _Py_IDENTIFIER(__aexit__);
             _Py_IDENTIFIER(__aenter__);
 
@@ -3258,7 +3275,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(SETUP_ASYNC_WITH): {
+        TARGET(SETUP_ASYNC_WITH): {
             PyObject *res = POP();
             /* Setup the finally block before pushing the result
                of __aenter__ on the stack. */
@@ -3268,7 +3285,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(SETUP_WITH): {
+        TARGET(SETUP_WITH): {
             _Py_IDENTIFIER(__exit__);
             _Py_IDENTIFIER(__enter__);
             PyObject *mgr = TOP();
@@ -3297,7 +3314,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(WITH_CLEANUP_START): {
+        TARGET(WITH_CLEANUP_START): {
             /* At the top of the stack are 1 or 6 values indicating
                how/why we entered the finally clause:
                - TOP = NULL
@@ -3370,7 +3387,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(WITH_CLEANUP_FINISH): {
+        TARGET(WITH_CLEANUP_FINISH): {
             PREDICTED(WITH_CLEANUP_FINISH);
             /* TOP = the result of calling the context.__exit__ bound method
                SECOND = either None or exception type
@@ -3407,7 +3424,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(LOAD_METHOD): {
+        TARGET(LOAD_METHOD): {
             /* Designed to work in tandem with CALL_METHOD. */
             PyObject *name = GETITEM(names, oparg);
             PyObject *obj = TOP();
@@ -3444,7 +3461,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(CALL_METHOD): {
+        TARGET(CALL_METHOD): {
             /* Designed to work in tamdem with LOAD_METHOD. */
             PyObject **sp, *res, *meth;
 
@@ -3493,7 +3510,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(CALL_FUNCTION): {
+        TARGET(CALL_FUNCTION): {
             PREDICTED(CALL_FUNCTION);
             PyObject **sp, *res;
             sp = stack_pointer;
@@ -3506,7 +3523,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(CALL_FUNCTION_KW): {
+        TARGET(CALL_FUNCTION_KW): {
             PyObject **sp, *res, *names;
 
             names = POP();
@@ -3523,7 +3540,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(CALL_FUNCTION_EX): {
+        TARGET(CALL_FUNCTION_EX): {
             PyObject *func, *callargs, *kwargs = NULL, *result;
             if (oparg & 0x01) {
                 kwargs = POP();
@@ -3568,7 +3585,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(MAKE_FUNCTION): {
+        TARGET(MAKE_FUNCTION): {
             PyObject *qualname = POP();
             PyObject *codeobj = POP();
             PyFunctionObject *func = (PyFunctionObject *)
@@ -3601,7 +3618,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(BUILD_SLICE): {
+        TARGET(BUILD_SLICE): {
             PyObject *start, *stop, *step, *slice;
             if (oparg == 3)
                 step = POP();
@@ -3619,7 +3636,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(FORMAT_VALUE): {
+        TARGET(FORMAT_VALUE): {
             /* Handles f-string value formatting. */
             PyObject *result;
             PyObject *fmt_spec;
@@ -3679,7 +3696,7 @@ main_loop:
             DISPATCH();
         }
 
-        case TARGET(EXTENDED_ARG): {
+        TARGET(EXTENDED_ARG): {
             int oldoparg = oparg;
             NEXTOPARG();
             oparg |= oldoparg << 8;
@@ -3687,10 +3704,12 @@ main_loop:
         }
 
 
+
 #if USE_COMPUTED_GOTOS
-        _unknown_opcode:
-#endif
+        ALIGNED_CASES(default, _unknown_opcode):
+#else
         default:
+#endif
             fprintf(stderr,
                 "XXX lineno: %d, opcode: %d\n",
                 PyFrame_GetLineNumber(f),
