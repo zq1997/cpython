@@ -401,12 +401,13 @@ static PyObject* ast2obj_boolop(boolop_ty);
 static PyTypeObject *And_type;
 static PyTypeObject *Or_type;
 static PyTypeObject *operator_type;
-static PyObject *Add_singleton, *Sub_singleton, *Mult_singleton,
-*MatMult_singleton, *Div_singleton, *Mod_singleton, *Pow_singleton,
-*LShift_singleton, *RShift_singleton, *BitOr_singleton, *BitXor_singleton,
-*BitAnd_singleton, *FloorDiv_singleton;
+static PyObject *Add_singleton, *IntAdd_singleton, *Sub_singleton,
+*Mult_singleton, *MatMult_singleton, *Div_singleton, *Mod_singleton,
+*Pow_singleton, *LShift_singleton, *RShift_singleton, *BitOr_singleton,
+*BitXor_singleton, *BitAnd_singleton, *FloorDiv_singleton;
 static PyObject* ast2obj_operator(operator_ty);
 static PyTypeObject *Add_type;
+static PyTypeObject *IntAdd_type;
 static PyTypeObject *Sub_type;
 static PyTypeObject *Mult_type;
 static PyTypeObject *MatMult_type;
@@ -1024,6 +1025,10 @@ static int init_types(void)
     if (!Add_type) return 0;
     Add_singleton = PyType_GenericNew(Add_type, NULL, NULL);
     if (!Add_singleton) return 0;
+    IntAdd_type = make_type("IntAdd", operator_type, NULL, 0);
+    if (!IntAdd_type) return 0;
+    IntAdd_singleton = PyType_GenericNew(IntAdd_type, NULL, NULL);
+    if (!IntAdd_singleton) return 0;
     Sub_type = make_type("Sub", operator_type, NULL, 0);
     if (!Sub_type) return 0;
     Sub_singleton = PyType_GenericNew(Sub_type, NULL, NULL);
@@ -3753,6 +3758,9 @@ PyObject* ast2obj_operator(operator_ty o)
         case Add:
             Py_INCREF(Add_singleton);
             return Add_singleton;
+        case IntAdd:
+            Py_INCREF(IntAdd_singleton);
+            return IntAdd_singleton;
         case Sub:
             Py_INCREF(Sub_singleton);
             return Sub_singleton;
@@ -7822,6 +7830,14 @@ obj2ast_operator(PyObject* obj, operator_ty* out, PyArena* arena)
         *out = Add;
         return 0;
     }
+    isinstance = PyObject_IsInstance(obj, (PyObject *)IntAdd_type);
+    if (isinstance == -1) {
+        return 1;
+    }
+    if (isinstance) {
+        *out = IntAdd;
+        return 0;
+    }
     isinstance = PyObject_IsInstance(obj, (PyObject *)Sub_type);
     if (isinstance == -1) {
         return 1;
@@ -8917,6 +8933,8 @@ PyInit__ast(void)
     if (PyDict_SetItemString(d, "operator", (PyObject*)operator_type) < 0)
         return NULL;
     if (PyDict_SetItemString(d, "Add", (PyObject*)Add_type) < 0) return NULL;
+    if (PyDict_SetItemString(d, "IntAdd", (PyObject*)IntAdd_type) < 0) return
+        NULL;
     if (PyDict_SetItemString(d, "Sub", (PyObject*)Sub_type) < 0) return NULL;
     if (PyDict_SetItemString(d, "Mult", (PyObject*)Mult_type) < 0) return NULL;
     if (PyDict_SetItemString(d, "MatMult", (PyObject*)MatMult_type) < 0) return

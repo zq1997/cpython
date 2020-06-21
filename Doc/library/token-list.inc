@@ -45,6 +45,10 @@
 
    Token value for ``"+"``.
 
+.. data:: INT_PLUS
+
+   Token value for ``"$+"``.
+
 .. data:: MINUS
 
    Token value for ``"-"``.

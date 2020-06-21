@@ -77,6 +77,7 @@ def_op('BINARY_MULTIPLY', 20)
 
 def_op('BINARY_MODULO', 22)
 def_op('BINARY_ADD', 23)
+def_op('INT_BINARY_ADD', 30)
 def_op('BINARY_SUBTRACT', 24)
 def_op('BINARY_SUBSCR', 25)
 def_op('BINARY_FLOOR_DIVIDE', 26)

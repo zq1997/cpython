@@ -913,6 +913,7 @@ stack_effect(int opcode, int oparg, int jump)
         case BINARY_MATRIX_MULTIPLY:
         case BINARY_MODULO:
         case BINARY_ADD:
+        case INT_BINARY_ADD:
         case BINARY_SUBTRACT:
         case BINARY_SUBSCR:
         case BINARY_FLOOR_DIVIDE:
@@ -3423,6 +3424,8 @@ binop(struct compiler *c, operator_ty op)
     switch (op) {
     case Add:
         return BINARY_ADD;
+    case IntAdd:
+        return INT_BINARY_ADD;
     case Sub:
         return BINARY_SUBTRACT;
     case Mult:

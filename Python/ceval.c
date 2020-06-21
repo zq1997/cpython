@@ -1566,6 +1566,19 @@ main_loop:
             DISPATCH();
         }
 
+        case TARGET(INT_BINARY_ADD): {
+            PyObject *right = POP();
+            PyObject *left = TOP();
+            PyObject *sum;
+            sum = PyLong_Type.tp_as_number->nb_add(left, right);
+            Py_DECREF(left);
+            Py_DECREF(right);
+            SET_TOP(sum);
+            if (sum == NULL)
+                goto error;
+            DISPATCH();
+        }
+
         case TARGET(BINARY_SUBTRACT): {
             PyObject *right = POP();
             PyObject *left = TOP();

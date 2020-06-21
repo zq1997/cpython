@@ -29,7 +29,7 @@ static void *opcode_targets[256] = {
     &&TARGET_BINARY_TRUE_DIVIDE,
     &&TARGET_INPLACE_FLOOR_DIVIDE,
     &&TARGET_INPLACE_TRUE_DIVIDE,
-    &&_unknown_opcode,
+    &&TARGET_INT_BINARY_ADD,
     &&_unknown_opcode,
     &&_unknown_opcode,
     &&_unknown_opcode,

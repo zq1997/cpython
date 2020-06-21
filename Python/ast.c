@@ -977,6 +977,8 @@ get_operator(struct compiling *c, const node *n)
             return RShift;
         case PLUS:
             return Add;
+        case INT_PLUS:
+            return IntAdd;
         case MINUS:
             return Sub;
         case STAR:
